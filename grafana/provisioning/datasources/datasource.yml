@@ -1,0 +1,16 @@
+# Файл конфигурации источников данных для Grafana
+apiVersion: 1
+
+# Список источников данных для добавления
+datasources:
+  # Наш Prometheus
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090  # ВАЖНО: имя сервиса, не localhost!
+    isDefault: true               # Этот источник будет выбран по умолчанию
+    editable: false               # Запрещаем редактирование через UI
+    jsonData:
+      timeInterval: 5s            # Интервал опроса
+      queryTimeout: 60s            # Таймаут запросов
+      httpMethod: POST          # Используем POST для больших запросов

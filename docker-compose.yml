@@ -1,0 +1,93 @@
+# Версия формата docker-compose. '3.8' — современная и стабильная версия.
+version: '3.8'
+
+# Здесь мы определяем внутренние сети для наших контейнеров.
+# Контейнеры в одной сети могут "видеть" друг друга по именам.
+networks:
+  monitoring:
+    driver: bridge   # 'bridge' — стандартный тип сети для одного хоста.
+
+# Самый главный раздел — список сервисов (контейнеров), которые мы хотим запустить.
+services:
+
+  # --- Сервис 1: Node Exporter (сборщик метрик с компьютера) ---
+  node-exporter:
+    # Какой образ использовать. 'latest' — самая свежая версия.
+    image: prom/node-exporter:latest
+    # Имя контейнера для удобства.
+    container_name: node-exporter
+    # Политика перезапуска: 'unless-stopped' значит, что контейнер будет
+    # автоматически запускаться при загрузке системы, если его не остановить вручную.
+    restart: unless-stopped
+    # Монтируем папки с хоста в контейнер. Это нужно, чтобы Node Exporter мог
+    # читать информацию о процессоре, памяти и дисках вашего компьютера.
+    # :ro означает "read-only" (только для чтения), что безопасно.
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    # Дополнительные команды для запуска. Говорим Node Exporter, где искать
+    # примонтированные папки с данными о системе.
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.rootfs=/rootfs'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    # Проброс портов. '9100:9100' означает: "порт 9100 на моем компьютере
+    # будет перенаправлять трафик на порт 9100 внутри контейнера".
+    # Это нужно, чтобы можно было проверить работу Node Exporter из браузера.
+    ports:
+      - "9100:9100"
+    # Подключаем этот сервис к нашей внутренней сети.
+    networks:
+      - monitoring
+
+  # --- Сервис 2: Prometheus (хранилище метрик) ---
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    restart: unless-stopped
+    # Монтируем файлы конфигурации и том для хранения данных.
+    volumes:
+      # Монтируем наш локальный файл prometheus.yml внутрь контейнера.
+      # Prometheus внутри контейнера будет читать конфиг именно отсюда.
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      # Монтируем созданный ранее том prometheus_data в папку /prometheus внутри контейнера.
+      # Туда Prometheus будет складывать базу данных с метриками.
+      - prometheus_data:/prometheus
+    # Команды запуска Prometheus. Указываем путь к конфигу и папке с данными.
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+    ports:
+      - "9090:9090"
+    networks:
+      - monitoring
+    # 'depends_on' говорит Docker, что сервис prometheus зависит от node-exporter.
+    # Это не значит, что он будет ждать, пока node-exporter полностью запустится,
+    # но хотя бы запустит его в правильном порядке.
+    depends_on:
+      - node-exporter
+
+  # --- Сервис 3: Grafana (визуализация) ---
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    restart: unless-stopped
+    # Том для хранения настроек и созданных дашбордов Grafana.
+    volumes:
+      - grafana_data:/var/lib/grafana # папка для данных Grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning # папка с конфигами для автоматической настройки Grafana
+      - ./grafana/provisioning/dashboards/json:/etc/grafana/provisioning/dashboards/json # папка с JSON дашбордами
+    ports:
+      - "3000:3000"
+    networks:
+      - monitoring
+    depends_on:
+      - prometheus
+
+# Здесь мы определяем тома (volumes) для хранения данных.
+# Это нужно, чтобы данные не пропадали при перезапуске контейнеров.
+volumes:
+  prometheus_data: {}   # Данные Prometheus будут храниться здесь.
+  grafana_data: {}

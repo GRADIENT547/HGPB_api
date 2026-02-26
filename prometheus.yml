@@ -1,0 +1,24 @@
+# Глобальные настройки Prometheus
+global:
+  # Как часто Prometheus будет опрашивать цели (например, Node Exporter).
+  scrape_interval: 5s
+  # Как часто переоценивать правила (для алертов, пока не используем).
+  evaluation_interval: 5s
+
+# Список целей для мониторинга
+scrape_configs:
+  # Задача для мониторинга самого Prometheus (полезно для самодиагностики)
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # --- Самая важная для нас задача: мониторинг Node Exporter ---
+  - job_name: "node"
+    # Можно переопределить интервал сбора для этой конкретной задачи.
+    # Оставим как в глобальных настройках, но для примера покажу.
+    scrape_interval: 5s
+    static_configs:
+      # Цель: наш контейнер node-exporter на порту 9100.
+      # Так как оба контейнера (prometheus и node-exporter) в одной сети 'monitoring',
+      # Prometheus может обращаться к node-exporter просто по его имени!
+      - targets: ["node-exporter:9100"]
