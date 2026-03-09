@@ -10,7 +10,64 @@ networks:
 # Самый главный раздел — список сервисов (контейнеров), которые мы хотим запустить.
 services:
 
-  # --- Сервис 1: Node Exporter (сборщик метрик с компьютера) ---
+    # --- Express.js приложение ---
+  express-api:
+    build: ./express-api          # Собрать образ из Dockerfile в папке ./express-api
+    container_name: express-api
+    restart: unless-stopped
+    ports:
+      - "5000:5000"               # Пробрасываем порт, чтобы можно было проверить API с хоста
+    environment:
+      # Переменные окружения для подключения к БД
+      - DB_HOST=postgres           # Имя сервиса базы данных
+      - DB_PORT=5432
+      - DB_USER=myuser
+      - DB_PASSWORD=mypassword
+      - DB_NAME=mydb
+    depends_on:
+      postgres:
+        condition: service_healthy                 # Ждем, пока запустится PostgreSQL
+    networks:
+      - monitoring
+
+  # --- База данных PostgreSQL ---
+  postgres:
+    image: postgres:15-alpine      # Легковесный образ PostgreSQL
+    container_name: postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=myuser
+      - POSTGRES_PASSWORD=mypassword
+      - POSTGRES_DB=mydb
+    volumes:
+      - postgres_data:/var/lib/postgresql/data          # Том для данных
+      - ./postgres-init:/docker-entrypoint-initdb.d     # (Опционально) Скрипты инициализации
+      - ./postgres-init/01-init.sql:/docker-entrypoint-initdb.d/01-init.sql # (Опционально) Конкретный SQL скрипт для инициализации
+    ports:
+      - "5432:5432"                # Проброс порта для внешних клиентов (необязательно)
+    networks:
+      - monitoring
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U myuser -d mydb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:latest  # [citation:1][citation:8]
+    container_name: postgres-exporter
+    restart: unless-stopped
+    environment:
+      # Формат: postgresql://пользователь:пароль@хост:порт/база?sslmode=disable
+      DATA_SOURCE_NAME: "postgresql://myuser:mypassword@postgres:5432/mydb?sslmode=disable"  # [citation:1][citation:8]
+    ports:
+      - "9187:9187"  # Для проверки метрик вручную
+    networks:
+      - monitoring
+    depends_on:
+      - postgres
+
+  # --- Node Exporter (сборщик метрик с компьютера) ---
   node-exporter:
     # Какой образ использовать. 'latest' — самая свежая версия.
     image: prom/node-exporter:latest
@@ -42,7 +99,7 @@ services:
     networks:
       - monitoring
 
-  # --- Сервис 2: Prometheus (хранилище метрик) ---
+  # --- Prometheus (хранилище метрик) ---
   prometheus:
     image: prom/prometheus:latest
     container_name: prometheus
@@ -68,8 +125,9 @@ services:
     # но хотя бы запустит его в правильном порядке.
     depends_on:
       - node-exporter
+      - express-api
 
-  # --- Сервис 3: Grafana (визуализация) ---
+  # --- Grafana (визуализация) ---
   grafana:
     image: grafana/grafana:latest
     container_name: grafana
@@ -90,4 +148,5 @@ services:
 # Это нужно, чтобы данные не пропадали при перезапуске контейнеров.
 volumes:
   prometheus_data: {}   # Данные Prometheus будут храниться здесь.
-  grafana_data: {}
+  grafana_data: {}   # Данные Grafana (настройки, дашборды) будут храниться здесь.
+  postgres_data: {}     # Данные PostgreSQL будут храниться здесь.

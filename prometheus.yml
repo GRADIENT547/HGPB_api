@@ -12,7 +12,7 @@ scrape_configs:
     static_configs:
       - targets: ["localhost:9090"]
 
-  # --- Самая важная для нас задача: мониторинг Node Exporter ---
+  # --- Задача на мониторинг Node Exporter ---
   - job_name: "node"
     # Можно переопределить интервал сбора для этой конкретной задачи.
     # Оставим как в глобальных настройках, но для примера покажу.
@@ -22,3 +22,15 @@ scrape_configs:
       # Так как оба контейнера (prometheus и node-exporter) в одной сети 'monitoring',
       # Prometheus может обращаться к node-exporter просто по его имени!
       - targets: ["node-exporter:9100"]
+  
+  # --- Задача на мониторинг нашего Express API ---
+  - job_name: "express-api"
+    scrape_interval: 5s
+    static_configs:
+      # Цель: наш контейнер express-api на порту 5000.
+      - targets: ["express-api:5000"]
+
+  - job_name: 'postgres'
+    scrape_interval: 5s  # PostgreSQL метрики можно собирать реже
+    static_configs:
+      - targets: ['postgres-exporter:9187']  # Имя сервиса из docker-compose [citation:1][citation:8]

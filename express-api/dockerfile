@@ -1,0 +1,36 @@
+# Этап 1: Сборка (Build)
+FROM node:18-alpine AS builder
+
+WORKDIR /app
+
+# Копируем файлы зависимостей
+COPY package*.json ./
+COPY tsconfig.json ./
+
+# Устанавливаем все зависимости (включая devDependencies для сборки)
+RUN npm install
+
+# Копируем исходный код
+COPY . .
+
+# Собираем TypeScript проект (предполагается, что есть скрипт build в package.json)
+RUN npm run build
+
+# Этап 2: Продакшн (Production)
+FROM node:18-alpine
+
+WORKDIR /app
+
+# Копируем только необходимые файлы
+COPY package*.json ./
+
+# Устанавливаем только продакшн зависимости
+RUN npm install --only=production
+
+# Копируем скомпилированные файлы из этапа builder
+COPY --from=builder /app/dist ./dist
+
+EXPOSE 5000
+
+# Запускаем скомпилированный JS файл
+CMD ["node", "dist/server.js"]
